@@ -398,16 +398,16 @@ class MideaACClimate(MideaClimate):
         """Return the current temperature (Follow Me feature).
 
         If an external temperature sensor is configured, return its value.
-        Otherwise, return the AC's indoor temperature sensor value.
+        Otherwise, return the AC's indoor temperature sensor value from parent.
         """
         if self._temp_sensor_entity_id and self._sensor_temp is not None:
             return self._sensor_temp
-        return cast("float | None", self._device.get_attribute("indoor_temperature"))
+        return super().current_temperature
 
     @property
     def extra_state_attributes(self) -> dict:
         """Midea AC Climate extra state attributes."""
-        attrs = dict(cast("dict", self._device.attributes))
+        attrs = dict(super().extra_state_attributes)
         # Add Follow Me sensor info to attributes
         if self._temp_sensor_entity_id:
             attrs["follow_me_sensor"] = self._temp_sensor_entity_id
