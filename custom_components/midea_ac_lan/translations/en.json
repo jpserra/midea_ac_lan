@@ -743,9 +743,13 @@
         "data": {
           "ip_address": "IP address",
           "refresh_interval": "Refresh interval (0 means not refreshing actively)",
+          "temp_sensor": "Temperature sensor (Follow Me)",
           "sensors": "Extra sensors",
           "switches": "Extra controls",
           "customize": "Customize"
+        },
+        "data_description": {
+          "temp_sensor": "Select an external temperature sensor for the Follow Me feature. The AC will use this sensor's temperature instead of its internal sensor."
         },
         "title": "Configure"
       }

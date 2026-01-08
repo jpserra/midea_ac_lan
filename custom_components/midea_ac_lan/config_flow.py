@@ -46,6 +46,7 @@ from homeassistant.const import (
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.json import save_json
+from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 from homeassistant.util.json import load_json
 from midealocal.cloud import (
     PRESET_ACCOUNT_DATA,
@@ -53,7 +54,7 @@ from midealocal.cloud import (
     MideaCloud,
     get_midea_cloud,
 )
-from midealocal.device import AuthException, MideaDevice, ProtocolVersion
+from midealocal.device import AuthException, DeviceType, MideaDevice, ProtocolVersion
 from midealocal.discover import discover
 from midealocal.exceptions import SocketException
 
@@ -74,6 +75,7 @@ from .const import (
     CONF_REFRESH_INTERVAL,
     CONF_SERVER,
     CONF_SUBTYPE,
+    CONF_TEMP_SENSOR,
     DOMAIN,
     EXTRA_CONTROL,
     EXTRA_SENSOR,
@@ -962,12 +964,27 @@ class MideaLanOptionsFlowHandler(OptionsFlow):
             & set(self._config_entry.options.get(CONF_SWITCHES, [])),
         )
         customize = self._config_entry.options.get(CONF_CUSTOMIZE, "")
+        temp_sensor = self._config_entry.options.get(CONF_TEMP_SENSOR, "")
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_IP_ADDRESS, default=ip_address): str,
                 vol.Required(CONF_REFRESH_INTERVAL, default=refresh_interval): int,
             },
         )
+        # Add temperature sensor option for AC devices (Follow Me feature)
+        if self._device_type == DeviceType.AC:
+            data_schema = data_schema.extend(
+                {
+                    vol.Optional(
+                        CONF_TEMP_SENSOR,
+                        default=temp_sensor,
+                    ): EntitySelector(
+                        EntitySelectorConfig(
+                            domain=["sensor", "number", "input_number"],
+                        ),
+                    ),
+                },
+            )
         if len(sensors) > 0:
             data_schema = data_schema.extend(
                 {

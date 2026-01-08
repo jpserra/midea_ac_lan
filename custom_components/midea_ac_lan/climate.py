@@ -33,11 +33,14 @@ from homeassistant.const import (
     MINOR_VERSION,
     PRECISION_HALVES,
     PRECISION_WHOLE,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
     Platform,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
 from midealocal.device import DeviceType
 from midealocal.devices.ac import DeviceAttributes as ACAttributes
 from midealocal.devices.ac import MideaACDevice
@@ -50,7 +53,7 @@ from midealocal.devices.cf import MideaCFDevice
 from midealocal.devices.fb import DeviceAttributes as FBAttributes
 from midealocal.devices.fb import MideaFBDevice
 
-from .const import DEVICES, DOMAIN, FanSpeed
+from .const import CONF_TEMP_SENSOR, DEVICES, DOMAIN, FanSpeed
 from .midea_devices import MIDEA_DEVICES
 from .midea_entity import MideaEntity
 
@@ -266,6 +269,7 @@ class MideaACClimate(MideaClimate):
     ) -> None:
         """Midea AC Climate entity init."""
         super().__init__(device, entity_key)
+        self._config_entry = config_entry
         self._attr_hvac_modes = [
             HVACMode.OFF,
             HVACMode.AUTO,
@@ -303,6 +307,109 @@ class MideaACClimate(MideaClimate):
             "sensors" in config_entry.options
             and "indoor_humidity" in config_entry.options["sensors"]
         )
+        # Follow Me feature: external temperature sensor
+        self._temp_sensor_entity_id: str | None = config_entry.options.get(
+            CONF_TEMP_SENSOR,
+        )
+        self._sensor_temp: float | None = None
+        self._sensor_unsubscribe: Any = None
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        self._async_setup_temp_sensor()
+
+    def _async_setup_temp_sensor(self) -> None:
+        """Set up the external temperature sensor listener."""
+        if not self._temp_sensor_entity_id:
+            return
+
+        @callback
+        def _async_sensor_changed(
+            event: Event[EventStateChangedData],
+        ) -> None:
+            """Handle external temperature sensor state changes."""
+            new_state = event.data["new_state"]
+            if new_state is None or new_state.state in {
+                STATE_UNAVAILABLE,
+                STATE_UNKNOWN,
+            }:
+                self._sensor_temp = None
+                _LOGGER.debug(
+                    "[%s] External sensor %s is unavailable",
+                    self._device.device_id,
+                    self._temp_sensor_entity_id,
+                )
+            else:
+                try:
+                    self._sensor_temp = float(new_state.state)
+                    _LOGGER.debug(
+                        "[%s] External sensor %s updated to %s",
+                        self._device.device_id,
+                        self._temp_sensor_entity_id,
+                        self._sensor_temp,
+                    )
+                except (ValueError, TypeError):
+                    self._sensor_temp = None
+                    _LOGGER.warning(
+                        "[%s] Unable to parse temperature from %s: %s",
+                        self._device.device_id,
+                        self._temp_sensor_entity_id,
+                        new_state.state,
+                    )
+            self.async_write_ha_state()
+
+        # Subscribe to state changes
+        self._sensor_unsubscribe = async_track_state_change_event(
+            self.hass,
+            [self._temp_sensor_entity_id],
+            _async_sensor_changed,
+        )
+
+        # Get initial state
+        sensor_state = self.hass.states.get(self._temp_sensor_entity_id)
+        if sensor_state and sensor_state.state not in {
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+        }:
+            try:
+                self._sensor_temp = float(sensor_state.state)
+                _LOGGER.debug(
+                    "[%s] Initial external sensor %s value: %s",
+                    self._device.device_id,
+                    self._temp_sensor_entity_id,
+                    self._sensor_temp,
+                )
+            except (ValueError, TypeError):
+                self._sensor_temp = None
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Run when entity will be removed from hass."""
+        if self._sensor_unsubscribe:
+            self._sensor_unsubscribe()
+            self._sensor_unsubscribe = None
+        await super().async_will_remove_from_hass()
+
+    @property
+    def current_temperature(self) -> float | None:
+        """Return the current temperature (Follow Me feature).
+
+        If an external temperature sensor is configured, return its value.
+        Otherwise, return the AC's indoor temperature sensor value.
+        """
+        if self._temp_sensor_entity_id and self._sensor_temp is not None:
+            return self._sensor_temp
+        return cast("float | None", self._device.get_attribute("indoor_temperature"))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Midea AC Climate extra state attributes."""
+        attrs = cast("dict", self._device.attributes)
+        # Add Follow Me sensor info to attributes
+        if self._temp_sensor_entity_id:
+            attrs["follow_me_sensor"] = self._temp_sensor_entity_id
+            attrs["follow_me_temperature"] = self._sensor_temp
+        return attrs
 
     @property
     def fan_mode(self) -> str:

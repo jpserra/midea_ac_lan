@@ -750,9 +750,13 @@
         "data": {
           "ip_address": "IP地址",
           "refresh_interval": "刷新间隔(设0为不进行主动刷新)",
+          "temp_sensor": "温度传感器 (跟随我)",
           "sensors": "扩展传感器",
           "switches": "扩展控制",
           "customize": "自定义"
+        },
+        "data_description": {
+          "temp_sensor": "选择外部温度传感器以启用跟随我功能。空调将使用此传感器的温度而不是其内置传感器。"
         },
         "title": "配置"
       }
