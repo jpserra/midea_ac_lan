@@ -1,7 +1,10 @@
 """Midea Climate entries."""
 
 import logging
-from typing import Any, ClassVar, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeAlias, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
@@ -312,7 +315,7 @@ class MideaACClimate(MideaClimate):
             CONF_TEMP_SENSOR,
         )
         self._sensor_temp: float | None = None
-        self._sensor_unsubscribe: Any = None
+        self._sensor_unsubscribe: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
@@ -404,7 +407,7 @@ class MideaACClimate(MideaClimate):
     @property
     def extra_state_attributes(self) -> dict:
         """Midea AC Climate extra state attributes."""
-        attrs = cast("dict", self._device.attributes)
+        attrs = dict(cast("dict", self._device.attributes))
         # Add Follow Me sensor info to attributes
         if self._temp_sensor_entity_id:
             attrs["follow_me_sensor"] = self._temp_sensor_entity_id
